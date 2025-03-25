@@ -5,3 +5,4 @@ def write_to_file():
 
 if __name__ == '__main__':
     write_to_file()
+    exit(2)
