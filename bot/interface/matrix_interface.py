@@ -52,23 +52,15 @@ class MatrixInterface(Interface):
         # Set up event callbacks
         self.client.add_event_callback(self._handle_room_message, RoomMessageText)
         self.client.add_event_callback(self._handle_invite, InviteMemberEvent)
-        self.client.add_event_callback(self._handle_encrypted_event, MegolmEvent)
+        self.client.add_event_callback(self._handle_megolm_event, MegolmEvent)
         
         # Initialize other required variables
         self.next_batch_path = self._config["application"]["next_batch_file"]
         self._event_loop = None
         self._sync_task = None
 
-    def _handle_encrypted_event(self, room, event):
-        """
-        Callback for handling encrypted events.
-        
-        Args:
-            room: The room object
-            event: The encrypted event
-        """
-
-        self.logger.info(f"Received encrypted event in {room.room_id} from {event.sender}")
+    def _handle_megolm_event(self, room, event):
+        self.logger.info(f"Received Megolm event in {room.room_id} from {event.sender}: {event.body}")
     
     async def _login(self) -> bool:
         """
