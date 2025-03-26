@@ -6,8 +6,30 @@ import time
 import json
 import toml
 import os
+import logging
 
 config_path = "config.toml"
+
+# Configure logging for systemd integration
+def setup_logging():
+    logger = logging.getLogger("matrix-bot")
+    logger.setLevel(logging.INFO)
+    
+    # Create console handler that logs to stdout/stderr (captured by systemd)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    
+    # Create a formatter that includes timestamp and log level
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+    console_handler.setFormatter(formatter)
+    
+    # Add the handler to the logger
+    logger.addHandler(console_handler)
+    
+    return logger
+
+# Initialize logger
+logger = setup_logging()
 
 # Load configuration
 def load_config():
@@ -15,7 +37,7 @@ def load_config():
         with open(config_path, "r") as f:
             return toml.load(f)
     except Exception as e:
-        print(f"Error loading config: {e}")
+        logger.critical(f"Error loading config: {e}")
         sys.exit(1)
 
 # Global config
@@ -44,27 +66,28 @@ async def main():
     try:
         # Login with proper error handling
         try:
+            logger.info("Attempting to log in to Matrix server...")
             response = await async_client.login(config["user"]["password"])
             if isinstance(response, LoginError):
-                print(f"Login error: {response}")
+                logger.error(f"Login error: {response}")
                 return
-            print(f"Login successful: {response}")
+            logger.info(f"Login successful")
         except Exception as e:
-            print(f"Login failed: {e}")
+            logger.error(f"Login failed: {e}")
             return
 
-        print("user: ", async_client.user)
+        logger.info(f"Logged in as user: {async_client.user}")
 
         # Load the sync token if it exists
         next_batch_path = config["application"]["next_batch_file"]
         try:
             with open(next_batch_path, "r") as next_batch_token:
                 async_client.next_batch = next_batch_token.read()
-                print(f"Loaded sync token: {async_client.next_batch}")
+                logger.info(f"Loaded sync token: {async_client.next_batch}")
         except FileNotFoundError:
-            print("No previous sync token found")
+            logger.info("No previous sync token found")
 
-        print("Syncing...")
+        logger.info("Starting initial sync...")
         sync_response = None
         
         # Initial sync with retry mechanism
@@ -74,24 +97,24 @@ async def main():
             try:
                 sync_response = await async_client.sync(timeout=config["sync"]["timeout"])
                 if isinstance(sync_response, SyncError):
-                    print(f"Initial sync error (attempt {attempt+1}/{max_retries}): {sync_response}")
+                    logger.warning(f"Initial sync error (attempt {attempt+1}/{max_retries}): {sync_response}")
                     if attempt < max_retries - 1:
-                        print(f"Retrying in {retry_delay} seconds...")
+                        logger.info(f"Retrying in {retry_delay} seconds...")
                         await asyncio.sleep(retry_delay)
                         retry_delay = min(retry_delay * 2, config["sync"]["max_retry_delay"])
                         continue
                     return
                 # If sync was successful, break out of retry loop
-                print("Initial sync successful")
+                logger.info("Initial sync successful")
                 break
             except Exception as e:
-                print(f"Error during initial sync (attempt {attempt+1}/{max_retries}): {e}")
+                logger.error(f"Error during initial sync (attempt {attempt+1}/{max_retries}): {e}")
                 if attempt < max_retries - 1:
-                    print(f"Retrying in {retry_delay} seconds...")
+                    logger.info(f"Retrying in {retry_delay} seconds...")
                     await asyncio.sleep(retry_delay)
                     retry_delay = min(retry_delay * 2, config["sync"]["max_retry_delay"])
                 else:
-                    print("Max retries reached. Exiting.")
+                    logger.critical("Max retries reached. Exiting.")
                     return
 
         # Main loop - keep syncing and processing messages
@@ -108,10 +131,10 @@ async def main():
                             if isinstance(event, RoomMessageText):
                                 # Skip our own messages
                                 if event.sender == async_client.user:
-                                    print(f"Ignored own message: {event.body}")
+                                    logger.debug(f"Ignored own message: {event.body}")
                                     continue
                                 
-                                print(f"Message in {room_id} from {event.sender}: {event.body}")
+                                logger.info(f"Message in {room_id} from {event.sender}: {event.body}")
                                 await async_client.room_read_markers(
                                     fully_read_event=event.event_id,
                                     room_id=room_id,
@@ -125,7 +148,7 @@ async def main():
                                         message_type="m.room.message",
                                         content={"msgtype": "m.text", "body": "Pong!"}
                                     )
-                                    print(f"Sent 'Pong!' response to {room_id}")
+                                    logger.info(f"Sent 'Pong!' response to {room_id}")
 
                 
                 # Save the sync token after processing events
@@ -134,10 +157,10 @@ async def main():
                         with open(next_batch_path, "w") as next_batch_token:
                             next_batch_token.write(sync_response.next_batch)
                     except Exception as e:
-                        print(f"Error saving sync token: {e}")
+                        logger.error(f"Error saving sync token: {e}")
                 
                 # Perform the next sync
-                print("Syncing again...", end="\r")
+                logger.debug("Syncing again...")  # Lower level for regular operation
                 sync_response = await async_client.sync(
                     timeout=config["sync"]["timeout"],
                     full_state=False
@@ -145,7 +168,7 @@ async def main():
                 
                 # Check if the response is an error
                 if isinstance(sync_response, SyncError):
-                    print(f"Sync error: {sync_response}")
+                    logger.error(f"Sync error: {sync_response}")
                     # Wait before retrying
                     await asyncio.sleep(5)
                     continue
@@ -154,15 +177,15 @@ async def main():
                 # Handle cancellation (e.g., during shutdown)
                 break
             except Exception as e:
-                print(f"Error during sync loop: {e}")
+                logger.error(f"Error during sync loop: {e}", exc_info=True)
                 # Wait before retrying
                 await asyncio.sleep(5)
         
-        print("Main loop exited")
+        logger.info("Main loop exited")
     
     finally:
         # Make sure we properly close the client session when exiting
-        print("Closing the client session...")
+        logger.info("Closing the client session...")
         await async_client.close()
         
         # Save the sync token in case of a clean shutdown
@@ -170,27 +193,28 @@ async def main():
             try:
                 with open(next_batch_path, "w") as next_batch_token:
                     next_batch_token.write(sync_response.next_batch)
-                    print("Final sync token saved")
+                    logger.info("Final sync token saved")
             except Exception as e:
-                print(f"Error saving final sync token: {e}")
+                logger.error(f"Error saving final sync token: {e}")
 
 def request_shutdown():
     global shutdown_requested, force_exit_timer
     shutdown_requested = True
-    print("\nShutdown requested, finishing current operations...")
+    logger.info("Shutdown requested, finishing current operations...")
     
     # Set a timer to force exit if graceful shutdown takes too long
     loop = asyncio.get_event_loop()
     force_exit_timer = loop.call_later(10, force_exit)
 
 def force_exit():
-    print("\nForce exiting after timeout...")
+    logger.warning("Force exiting after timeout...")
     sys.exit(1)
 
 if __name__ == "__main__":
     try:
+        logger.info("Matrix bot starting up...")
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("KeyboardInterrupt received, shutting down")
+        logger.info("KeyboardInterrupt received, shutting down")
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        logger.critical(f"Unexpected error: {e}", exc_info=True)
