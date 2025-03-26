@@ -6,7 +6,7 @@ from typing import Callable, Dict, Any, Optional
 from nio import (
     AsyncClient, SyncResponse, RoomMessageText, InviteMemberEvent,
     SyncError, LoginError, LoginResponse, crypto, exceptions,
-    MatrixRoom
+    MatrixRoom, ClientConfig
 )
 
 from .interface import Interface
@@ -40,10 +40,13 @@ class MatrixInterface(Interface):
         self.logger = logging.getLogger("matrix-interface")
         
         # Initialize the Matrix client
+        client_config = ClientConfig(store_sync_tokens=True)
         self.client = AsyncClient(
             homeserver=self._config["server"]["homeserver"],
             user=self._config["user"]["user_id"],
-            ssl=self._config["server"]["ssl"]
+            ssl=self._config["server"]["ssl"],
+            store_path=self._config.get("application", {}).get("store_path", "matrix.db"),
+            config=client_config
         )
         
         # Set up event callbacks
