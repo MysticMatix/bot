@@ -112,6 +112,11 @@ async def main():
                                     continue
                                 
                                 print(f"Message in {room_id} from {event.sender}: {event.body}")
+                                await async_client.room_read_markers(
+                                    fully_read_event=event.event_id,
+                                    room_id=room_id,
+                                    read_event=event.event_id
+                                )
                                 
                                 # Respond to commands
                                 if event.body == "!ping":
@@ -121,6 +126,7 @@ async def main():
                                         content={"msgtype": "m.text", "body": "Pong!"}
                                     )
                                     print(f"Sent 'Pong!' response to {room_id}")
+
                 
                 # Save the sync token after processing events
                 if sync_response and hasattr(sync_response, 'next_batch'):
