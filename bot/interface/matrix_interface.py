@@ -6,7 +6,7 @@ from typing import Callable, Dict, Any, Optional
 from nio import (
     AsyncClient, SyncResponse, RoomMessageText, InviteMemberEvent,
     SyncError, LoginError, LoginResponse, crypto, exceptions,
-    MatrixRoom, ClientConfig, UnknownEncryptedEvent
+    MatrixRoom, ClientConfig, MegolmEvent
 )
 
 from .interface import Interface
@@ -52,7 +52,7 @@ class MatrixInterface(Interface):
         # Set up event callbacks
         self.client.add_event_callback(self._handle_room_message, RoomMessageText)
         self.client.add_event_callback(self._handle_invite, InviteMemberEvent)
-        self.client.add_event_callback(self._handle_encrypted_event, UnknownEncryptedEvent)
+        self.client.add_event_callback(self._handle_encrypted_event, MegolmEvent)
         
         # Initialize other required variables
         self.next_batch_path = self._config["application"]["next_batch_file"]
