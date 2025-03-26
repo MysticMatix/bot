@@ -5,7 +5,7 @@ from typing import Callable, Dict, Any, Optional
 
 from nio import (
     AsyncClient, SyncResponse, RoomMessageText, 
-    SyncError, LoginError
+    SyncError, LoginError, InviteMemberEvent
 )
 
 from .interface import Interface
@@ -47,6 +47,7 @@ class MatrixInterface(Interface):
         
         # Set up event callbacks
         self.client.add_event_callback(self._handle_room_message, RoomMessageText)
+        self.client.add_event_callback(self._handle_invite, InviteMemberEvent)
         
         # Initialize other required variables
         self.next_batch_path = self._config["application"]["next_batch_file"]
@@ -200,6 +201,48 @@ class MatrixInterface(Interface):
         }
         
         self._message_callback(event.body, context)
+    
+    def _handle_invite(self, room, event):
+        """
+        Callback for handling room invites.
+        
+        Args:
+            room: The room object
+            event: The invite event
+        """
+        # Only handle invites for our user
+        if event.state_key != self.client.user_id:
+            return
+            
+        self.logger.info(f"Received invite to room {room.room_id} from {event.sender}")
+        
+        # Join the room automatically
+        asyncio.create_task(self._join_room(room.room_id))
+    
+    async def _join_room(self, room_id):
+        """
+        Join a room when invited.
+        
+        Args:
+            room_id: The ID of the room to join
+        """
+        try:
+            self.logger.info(f"Joining room {room_id}")
+            response = await self.client.join(room_id)
+            
+            if isinstance(response, SyncError):
+                self.logger.error(f"Failed to join room {room_id}: {response}")
+                return False
+                
+            self.logger.info(f"Successfully joined room {room_id}")
+            
+            # Optional: Send a message to the room to indicate the bot has joined
+            await self._send_message_async("Hello! I've joined this room and am ready to assist.", room_id)
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error joining room {room_id}: {e}")
+            return False
     
     def send_message(self, message: str, target: str = None) -> bool:
         """
