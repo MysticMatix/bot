@@ -8,6 +8,7 @@ import threading
 
 # Import our interface implementation
 from interface import MatrixInterface
+from llm import GeminiLLM, LLM
 
 config_path = "config.toml"
 
@@ -53,6 +54,8 @@ force_exit_timer = None
 # Matrix interface
 matrix_interface = None
 
+llms: dict[str, LLM] = {}
+
 # Message handler callback
 def handle_message(message, context):
     """
@@ -64,10 +67,15 @@ def handle_message(message, context):
     """
     logger.info(f"Message in {context['room_id']} from {context['sender']}: {message}")
     
-    # Respond to commands
-    if message == "!ping":
-        matrix_interface.send_message("Pong!", context['room_id'])
-        logger.info(f"Sent 'Pong!' response to {context['room_id']}")
+    # Send the message to the LLM for processing
+    if context["room_id"] not in llms:
+        llms[context["room_id"]] = GeminiLLM(gconfig["gemini"], "You are an assistant.")
+
+    llm = llms[context["room_id"]]
+    response = llm.query(message)
+
+    # Send the response back to the room
+    matrix_interface.send_message(response["content"], context["room_id"])
 
 def request_shutdown():
     global shutdown_requested, force_exit_timer, matrix_interface
