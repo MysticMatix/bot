@@ -60,7 +60,7 @@ class MatrixInterface(Interface):
         self._sync_task = None
 
     def _handle_megolm_event(self, room, event):
-        self.logger.info(f"Received Megolm event in {room.room_id} from {event.sender}: {event.body}")
+        self.logger.info(f"Received Megolm event in {room.room_id} from {event.sender}: {event}")
     
     async def _login(self) -> bool:
         """
