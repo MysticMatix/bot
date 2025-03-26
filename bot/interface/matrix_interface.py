@@ -6,7 +6,11 @@ from typing import Callable, Dict, Any, Optional
 from nio import (
     AsyncClient, SyncResponse, RoomMessageText, InviteMemberEvent,
     SyncError, LoginError, LoginResponse, crypto, exceptions,
-    MatrixRoom, ClientConfig, MegolmEvent
+    MatrixRoom, ClientConfig, MegolmEvent,
+
+    KeyVerificationEvent, KeyVerificationStart, KeyVerificationCancel,
+    KeyVerificationAccept, KeyVerificationKey, KeyVerificationMac,
+    RoomKeyRequest
 )
 
 from .interface import Interface
@@ -55,7 +59,15 @@ class MatrixInterface(Interface):
         # Set up event callbacks
         self.client.add_event_callback(self._handle_room_message, RoomMessageText)
         self.client.add_event_callback(self._handle_invite, InviteMemberEvent)
+
         self.client.add_event_callback(self._handle_megolm_event, MegolmEvent)
+
+        self.client.add_event_callback(self._handle_key_verification_start, KeyVerificationStart)
+        self.client.add_event_callback(self._handle_key_verification_cancel, KeyVerificationCancel)
+        self.client.add_event_callback(self._handle_key_verification_key, KeyVerificationKey)
+        self.client.add_event_callback(self._handle_key_verification_mac, KeyVerificationMac)
+
+        self.client.add_event_callback(self._handle_room_key_request, RoomKeyRequest)
         
         # Initialize other required variables
         self.next_batch_path = self._config["application"]["next_batch_file"]
@@ -64,10 +76,95 @@ class MatrixInterface(Interface):
 
         self.logger.info("Matrix interface initialized")
 
-    def _handle_megolm_event(self, room, event):
-        self.logger.info(f"Received Megolm event in {room.room_id} from {event.sender}: {event.ciphertext}")
+    async def _handle_megolm_event(self, room, event):
+        """
+        Handle encrypted Megolm events by trying to decrypt them.
+        """
+        self.logger.info(f"Received Megolm event in {room.room_id} from {event.sender}")
+        
+        try:
+            # Try to decrypt the event
+            decrypted_event = await self.client.decrypt_event(event)
+            if decrypted_event:
+                self.logger.info(f"Successfully decrypted event from {event.sender}")
+                
+                # Handle the decrypted event based on its type
+                if isinstance(decrypted_event, RoomMessageText):
+                    self._handle_room_message(room, decrypted_event)
+                else:
+                    self.logger.info(f"Decrypted event type: {type(decrypted_event)}")
+                    
+        except exceptions.OlmUnverifiedDeviceError as e:
+            # This happens when receiving a message from an unverified device
+            self.logger.warning(f"Received message from unverified device: {e}")
+            # Optionally auto-verify the device (less secure but convenient)
+            device_id = e.device_id
+            sender = e.sender
+            await self.client.verify_device(sender, device_id)
+            
+        except exceptions.MegolmSessionError as e:
+            self.logger.error(f"Megolm session error: {e}")
+            # Request room keys if missing
+            await self._request_room_keys(room.room_id, event.sender)
+            
+        except Exception as e:
+            self.logger.error(f"Failed to decrypt Megolm event: {e}")
 
-        # decrypt and run _handle_room_message
+    async def _request_room_keys(self, room_id, sender):
+        """
+        Request room keys from a specific user.
+        
+        Args:
+            room_id: The room ID for which keys are needed
+            sender: The user ID to request keys from
+        """
+        try:
+            self.logger.info(f"Requesting room keys for {room_id} from {sender}")
+            request_id = await self.client.request_room_key(room_id, sender)
+            self.logger.info(f"Room key request sent with ID: {request_id}")
+        except Exception as e:
+            self.logger.error(f"Failed to request room keys: {e}")
+
+    async def _handle_room_key_request(self, event):
+        """
+        Handle incoming room key requests by automatically accepting them.
+        """
+        self.logger.info(f"Received room key request from {event.sender}")
+        try:
+            await self.client.confirm_key_share(event)
+            self.logger.info(f"Shared room keys with {event.sender}")
+        except Exception as e:
+            self.logger.error(f"Failed to share room keys: {e}")
+
+    async def _handle_key_verification_start(self, event):
+        """
+        Handle key verification start events.
+        """
+        self.logger.info(f"Key verification started by {event.sender}")
+        # Auto-accept verification requests
+        await self.client.accept_key_verification(event.transaction_id)
+
+    async def _handle_key_verification_cancel(self, event):
+        """
+        Handle key verification cancellation.
+        """
+        self.logger.info(f"Key verification cancelled by {event.sender}: {event.reason}")
+
+    async def _handle_key_verification_key(self, event):
+        """
+        Handle key verification key events.
+        """
+        self.logger.info(f"Key verification key event from {event.sender}")
+        # Auto-accept key verification
+        await self.client.confirm_key_verification(event.transaction_id)
+
+    async def _handle_key_verification_mac(self, event):
+        """
+        Handle key verification MAC events.
+        """
+        self.logger.info(f"Key verification MAC event from {event.sender}")
+        # Auto-accept MAC verification
+        await self.client.confirm_key_verification(event.transaction_id)
     
     async def _login(self) -> bool:
         """
