@@ -41,13 +41,14 @@ def load_config():
         sys.exit(1)
 
 # Global config
-config = load_config()
+gconfig = load_config()
+matrix_config = gconfig["matrix"]
 
 # Initialize client from config
 async_client = AsyncClient(
-    homeserver=config["server"]["homeserver"],
-    user=config["user"]["user_id"],
-    ssl=config["server"]["ssl"],
+    homeserver=matrix_config["server"]["homeserver"],
+    user=matrix_config["user"]["user_id"],
+    ssl=matrix_config["server"]["ssl"],
 )
 
 # Flag to track if shutdown was requested
@@ -67,7 +68,7 @@ async def main():
         # Login with proper error handling
         try:
             logger.info("Attempting to log in to Matrix server...")
-            response = await async_client.login(config["user"]["password"])
+            response = await async_client.login(matrix_config["user"]["password"])
             if isinstance(response, LoginError):
                 logger.error(f"Login error: {response}")
                 return
@@ -79,7 +80,7 @@ async def main():
         logger.info(f"Logged in as user: {async_client.user}")
 
         # Load the sync token if it exists
-        next_batch_path = config["application"]["next_batch_file"]
+        next_batch_path = matrix_config["application"]["next_batch_file"]
         try:
             with open(next_batch_path, "r") as next_batch_token:
                 async_client.next_batch = next_batch_token.read()
@@ -91,17 +92,17 @@ async def main():
         sync_response = None
         
         # Initial sync with retry mechanism
-        retry_delay = config["sync"]["initial_retry_delay"]
-        max_retries = config["sync"]["max_retries"]
+        retry_delay = matrix_config["sync"]["initial_retry_delay"]
+        max_retries = matrix_config["sync"]["max_retries"]
         for attempt in range(max_retries):
             try:
-                sync_response = await async_client.sync(timeout=config["sync"]["timeout"])
+                sync_response = await async_client.sync(timeout=matrix_config["sync"]["timeout"])
                 if isinstance(sync_response, SyncError):
                     logger.warning(f"Initial sync error (attempt {attempt+1}/{max_retries}): {sync_response}")
                     if attempt < max_retries - 1:
                         logger.info(f"Retrying in {retry_delay} seconds...")
                         await asyncio.sleep(retry_delay)
-                        retry_delay = min(retry_delay * 2, config["sync"]["max_retry_delay"])
+                        retry_delay = min(retry_delay * 2, matrix_config["sync"]["max_retry_delay"])
                         continue
                     return
                 # If sync was successful, break out of retry loop
@@ -112,7 +113,7 @@ async def main():
                 if attempt < max_retries - 1:
                     logger.info(f"Retrying in {retry_delay} seconds...")
                     await asyncio.sleep(retry_delay)
-                    retry_delay = min(retry_delay * 2, config["sync"]["max_retry_delay"])
+                    retry_delay = min(retry_delay * 2, matrix_config["sync"]["max_retry_delay"])
                 else:
                     logger.critical("Max retries reached. Exiting.")
                     return
@@ -162,7 +163,7 @@ async def main():
                 # Perform the next sync
                 logger.debug("Syncing again...")  # Lower level for regular operation
                 sync_response = await async_client.sync(
-                    timeout=config["sync"]["timeout"],
+                    timeout=matrix_config["sync"]["timeout"],
                     full_state=False
                 )
                 
