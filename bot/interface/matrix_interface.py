@@ -40,7 +40,10 @@ class MatrixInterface(Interface):
         self.logger = logging.getLogger("matrix-bot")
         
         # Initialize the Matrix client
-        client_config = ClientConfig(store_sync_tokens=True)
+        client_config = ClientConfig(
+            store_sync_tokens=True,
+            encryption_enabled=True
+        )
         self.client = AsyncClient(
             homeserver=self._config["server"]["homeserver"],
             user=self._config["user"]["user_id"],
@@ -62,8 +65,9 @@ class MatrixInterface(Interface):
         self.logger.info("Matrix interface initialized")
 
     def _handle_megolm_event(self, room, event):
-        self.logger.info("something happened")
         self.logger.info(f"Received Megolm event in {room.room_id} from {event.sender}: {event.ciphertext}")
+
+        # decrypt and run _handle_room_message
     
     async def _login(self) -> bool:
         """
