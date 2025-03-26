@@ -320,5 +320,5 @@ class MatrixInterface(Interface):
             room {MatrixRoom} -- Provided by nio
             event {InviteEvent} -- Provided by nio
         """
-        self.join(room.room_id)
+        self.client.join(room.room_id)
         self.logger.info(f"Auto-joined room {room.room_id}, invited by {event.sender}")
