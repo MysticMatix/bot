@@ -4,7 +4,7 @@ import os
 from typing import Callable, Dict, Any, Optional
 
 from nio import (
-    AsyncClient, SyncResponse, RoomMessageText, InviteEvent,
+    AsyncClient, SyncResponse, RoomMessageText, InviteMemberEvent,
     SyncError, LoginError, LoginResponse, crypto, exceptions,
     MatrixRoom
 )
@@ -48,7 +48,7 @@ class MatrixInterface(Interface):
         
         # Set up event callbacks
         self.client.add_event_callback(self._handle_room_message, RoomMessageText)
-        self.client.add_event_callback(self._autojoin_room, InviteEvent)
+        self.client.add_event_callback(self._handle_invite, InviteMemberEvent)
         
         # Initialize other required variables
         self.next_batch_path = self._config["application"]["next_batch_file"]
@@ -183,6 +183,7 @@ class MatrixInterface(Interface):
             return
         
         self.logger.info(f"Message in {room.room_id} from {event.sender}: {event.body}")
+        self.client.add_event_callback(self._handle_invite, InviteMemberEvent)
         
         # Mark the message as read
         asyncio.create_task(
@@ -313,12 +314,44 @@ class MatrixInterface(Interface):
             
         return True
     
-    def _autojoin_room(self, room: MatrixRoom, event: InviteEvent):
-        """Callback to automatically joins a Matrix room on invite.
-
-        Arguments:
-            room {MatrixRoom} -- Provided by nio
-            event {InviteEvent} -- Provided by nio
+    def _handle_invite(self, room, event):
         """
-        self.client.join(room.room_id)
-        self.logger.info(f"Auto-joined room {room.room_id}, invited by {event.sender}")
+        Callback for handling room invites.
+        
+        Args:
+            room: The room object
+            event: The invite event
+        """
+        # Only handle invites for our user
+        if event.state_key != self.client.user_id:
+            return
+            
+        self.logger.info(f"Received invite to room {room.room_id} from {event.sender}")
+        
+        # Join the room automatically
+        asyncio.create_task(self._join_room(room.room_id))
+    
+    async def _join_room(self, room_id):
+        """
+        Join a room when invited.
+        
+        Args:
+            room_id: The ID of the room to join
+        """
+        try:
+            self.logger.info(f"Joining room {room_id}")
+            response = await self.client.join(room_id)
+            
+            if isinstance(response, SyncError):
+                self.logger.error(f"Failed to join room {room_id}: {response}")
+                return False
+                
+            self.logger.info(f"Successfully joined room {room_id}")
+            
+            # Optional: Send a message to the room to indicate the bot has joined
+            await self._send_message_async("Hello! I've joined this room and am ready to assist.", room_id)
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error joining room {room_id}: {e}")
+            return False
