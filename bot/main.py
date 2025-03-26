@@ -7,7 +7,7 @@ import logging
 import threading
 
 # Import our interface implementation
-from bot.interface import MatrixInterface
+from interface import MatrixInterface
 
 config_path = "config.toml"
 
