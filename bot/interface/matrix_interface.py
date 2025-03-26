@@ -4,8 +4,9 @@ import os
 from typing import Callable, Dict, Any, Optional
 
 from nio import (
-    AsyncClient, SyncResponse, RoomMessageText, 
-    SyncError, LoginError
+    AsyncClient, SyncResponse, RoomMessageText, InviteEvent,
+    SyncError, LoginError, LoginResponse, crypto, exceptions,
+    MatrixRoom
 )
 
 from .interface import Interface
@@ -47,6 +48,7 @@ class MatrixInterface(Interface):
         
         # Set up event callbacks
         self.client.add_event_callback(self._handle_room_message, RoomMessageText)
+        self.client.add_event_callback(self._autojoin_room, InviteEvent)
         
         # Initialize other required variables
         self.next_batch_path = self._config["application"]["next_batch_file"]
@@ -310,3 +312,13 @@ class MatrixInterface(Interface):
             self._thread.join(timeout=5)
             
         return True
+    
+    def _autojoin_room(self, room: MatrixRoom, event: InviteEvent):
+        """Callback to automatically joins a Matrix room on invite.
+
+        Arguments:
+            room {MatrixRoom} -- Provided by nio
+            event {InviteEvent} -- Provided by nio
+        """
+        self.join(room.room_id)
+        self.logger.info(f"Auto-joined room {room.room_id}, invited by {event.sender}")
