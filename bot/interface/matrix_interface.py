@@ -37,7 +37,7 @@ class MatrixInterface(Interface):
         """
         super().__init__(message_callback, config)
         
-        self.logger = logging.getLogger("matrix-interface")
+        self.logger = logging.getLogger("matrix-bot")
         
         # Initialize the Matrix client
         client_config = ClientConfig(store_sync_tokens=True)
