@@ -297,7 +297,7 @@ class MatrixInterface(Interface):
         self.client.add_event_callback(self._handle_invite, InviteMemberEvent)
         
         # Mark the message as read
-        asyncio.run_coroutine_threadsafe(
+        future = asyncio.run_coroutine_threadsafe(
             self.client.room_read_markers(
                 fully_read_event=event.event_id,
                 room_id=room.room_id,
@@ -305,6 +305,11 @@ class MatrixInterface(Interface):
             ),
             self._event_loop
         )
+
+        try:
+            future.result(timeout=2.0)  # Wait up to 2 seconds
+        except (asyncio.TimeoutError, Exception) as e:
+            self.logger.error(f"Error or timeout setting read markers: {e}")
         
         # Call the message callback with the message text and context
         context = {
@@ -314,7 +319,7 @@ class MatrixInterface(Interface):
             "event": event
         }
         
-        # self._message_callback(event.body, context)
+        self._message_callback(event.body, context)
     
     def send_message(self, message: str, target: str = None) -> bool:
         """
