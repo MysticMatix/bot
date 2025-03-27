@@ -297,12 +297,13 @@ class MatrixInterface(Interface):
         self.client.add_event_callback(self._handle_invite, InviteMemberEvent)
         
         # Mark the message as read
-        asyncio.create_task(
+        asyncio.run_coroutine_threadsafe(
             self.client.room_read_markers(
                 fully_read_event=event.event_id,
                 room_id=room.room_id,
                 read_event=event.event_id
-            )
+            ),
+            self._event_loop
         )
         
         # Call the message callback with the message text and context
