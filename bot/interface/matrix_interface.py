@@ -102,10 +102,11 @@ class MatrixInterface(Interface):
             sender = e.sender
             await self.client.verify_device(sender, device_id)
             
-        except exceptions.MegolmSessionError as e:
-            self.logger.error(f"Megolm session error: {e}")
-            # Request room keys if missing
-            await self._request_room_keys(room.room_id, event.sender)
+        except exceptions.EncryptionError as e:
+            self.logger.error(f"Encryption error: {e}")
+            # Request room keys if message indicates missing session
+            if "no session found with session id" in str(e):
+                await self._request_room_keys(room.room_id, event.sender)
             
         except Exception as e:
             self.logger.error(f"Failed to decrypt Megolm event: {e}")
