@@ -314,7 +314,7 @@ class MatrixInterface(Interface):
             "event": event
         }
         
-        self._message_callback(event.body, context)
+        # self._message_callback(event.body, context)
     
     def send_message(self, message: str, target: str = None) -> bool:
         """
